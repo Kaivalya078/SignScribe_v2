@@ -1,0 +1,35 @@
+# SignScribe — ASL Alphabet Recognition System
+# Requirements file
+#
+# ── Install all at once (CPU-only PyTorch) ────────────────────────────────────
+#   pip install -r requirements.txt
+#
+# ── GPU (CUDA 12.x) ───────────────────────────────────────────────────────────
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt --ignore-requires-python
+#
+# Note: PyTorch is listed here for the CPU build.
+# For CUDA builds, install torch separately BEFORE running this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Machine Learning & Computer Vision ───────────────────────────────────────
+torch==2.11.0
+opencv-python==4.13.0.92
+mediapipe==0.10.35
+numpy==2.3.3
+scikit-learn==1.7.2
+
+# ── Data Handling ─────────────────────────────────────────────────────────────
+pandas==2.3.2
+
+# ── GUI ───────────────────────────────────────────────────────────────────────
+pillow==11.3.0
+ttkthemes>=3.2.0
+
+# ── Text-to-Speech ────────────────────────────────────────────────────────────
+pyttsx3==2.99
+pywin32==311        # Windows only — required by pyttsx3 for SAPI5 audio
+
+# ── Training Visualisation ────────────────────────────────────────────────────
+matplotlib==3.10.6
+seaborn==0.13.2

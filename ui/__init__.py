@@ -1,0 +1,1 @@
+"""ui — SignScribe Tkinter interface."""

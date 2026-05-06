@@ -1,241 +1,389 @@
-# SignScribe - Professional ASL Recognition System
+# SignScribe — ASL Alphabet Recognition System
 
 <div align="center">
   <h3>🤟 Real-time American Sign Language Recognition using Machine Learning</h3>
-  <p>An intelligent ASL alphabet recognition system with landmark-based classification for accurate, real-time sign language interpretation.</p>**
+  <p>A production-grade, modular ASL alphabet recognition system built on MediaPipe hand landmarks, a PyTorch MLP classifier, and a threaded Tkinter interface.</p>
 </div>
 
 ---
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Technologies Used](#technologies-used)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Demo Video](#demo-video)
-- [Project Structure](#project-structure)
-- [Performance](#performance)
-- [Contributing](#contributing)
-- [License](#license)
+- [Overview](#-overview)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Technologies](#-technologies)
+- [Project Structure](#-project-structure)
+- [Installation](#-installation)
+- [Training](#-training)
+- [Running the App](#-running-the-app)
+- [How It Works](#-how-it-works)
+- [Performance](#-performance)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
 
 ## 🎯 Overview
 
-SignScribe is a state-of-the-art American Sign Language (ASL) recognition system that converts hand gestures into text in real-time. Unlike traditional image-based approaches, SignScribe uses **MediaPipe hand landmarks** combined with a **Random Forest classifier** to achieve superior accuracy and performance.
+SignScribe is a real-time American Sign Language (ASL) alphabet recognition desktop application. It converts hand gestures into text using a landmark-based pipeline — processing 21 3D hand keypoints rather than raw pixels — for fast, lighting-robust predictions.
 
-### Key Innovations:
-- **Landmark-Based Recognition**: Processes 21 3D hand landmarks instead of raw pixels for better accuracy and speed
-- **Real-Time Processing**: Optimized for live camera feed with minimal latency
-- **Intelligent Smoothing**: Advanced prediction stabilization prevents character spam
-- **Professional UI**: Modern dark-themed interface with custom-drawn components
+**Phase history:**
+| Phase | Description |
+|---|---|
+| 1 | OpenCV HUD overlay, non-blocking TTS queue, production cleanup |
+| 2 | `ConfidenceSmoother` — confidence threshold + streak + cooldown |
+| 3 | Modular refactor — `core/` package separated from UI |
+| 4 | PyTorch MLP replacing Random Forest, dual-backend inference |
+| 5 | Background worker thread, bounded queue, UI poll loop |
+
+---
 
 ## ✨ Features
 
-- 🎯 **High Accuracy**: 95%+ accuracy on ASL alphabet recognition
-- ⚡ **Real-Time Performance**: 30+ FPS processing with minimal CPU usage
-- 🧠 **Smart Prediction Smoothing**: 5-frame window with majority voting
-- ⏱️ **Configurable Cooldown**: 5-second delay between character inputs to prevent spam
-- 🎨 **Professional UI**: Custom dark theme with glowing prediction display
-- 📱 **Lightweight Model**: Uses Random Forest instead of heavy CNN models
-- 🔄 **Robust Preprocessing**: Translation and scale-invariant landmark normalization
-- 📝 **Sentence Building**: Build complete sentences with space, delete, and backspace functionality
+- 🎯 **High Accuracy** — 95%+ on ASL A–Z + space/del/nothing
+- ⚡ **Threaded Pipeline** — camera + detection + inference on background thread; UI stays responsive
+- 🧠 **ConfidenceSmoother** — accepts only predictions with ≥80% confidence held for 3 consecutive frames, with 1.5s cooldown
+- 🔊 **Offline TTS** — speaks completed words via `pyttsx3` queue worker
+- 📺 **Live HUD** — letter, confidence bar, and FPS burned into the camera frame
+- 🔌 **Dual-Backend Inference** — supports PyTorch `.pth` (MLP) and scikit-learn `.pkl` (Random Forest) via the same API
+- 🧩 **Modular Codebase** — `core/` is fully independent of the UI
 
-## 🛠 Technologies Used
-
-### Machine Learning & Computer Vision
-- **MediaPipe** - Hand landmark detection and tracking
-- **scikit-learn** - Random Forest classifier for gesture recognition
-- **OpenCV** - Camera capture and image processing
-- **NumPy** - Numerical computations and array operations
-- **Pandas** - Data preprocessing and CSV handling
-
-### User Interface
-- **Tkinter** - GUI framework for the desktop application
-- **PIL (Pillow)** - Image processing and display
-- **Custom Canvas Drawing** - Rounded corners and modern UI elements
-
-### Development Tools
-- **Python 3.11+** - Core programming language
-- **Pickle** - Model serialization and deployment
-- **Threading** - Asynchronous camera processing
+---
 
 ## 🏗 Architecture
 
+```
+┌──────────────────────────────────────────────────┐
+│  _CameraWorker  (daemon thread)                  │
+│                                                  │
+│  cv2.VideoCapture → flip → MediaPipe detect      │
+│    → draw landmarks → normalize_landmarks()      │
+│    → SignLanguageModel.predict()                 │
+│                    ↓                             │
+│           Queue(maxsize=2)  FrameResult          │
+└──────────────────────┬───────────────────────────┘
+                       │  every 16 ms
+┌──────────────────────▼───────────────────────────┐
+│  Main Thread  (Tkinter)                          │
+│                                                  │
+│  _poll_results()                                 │
+│    → drain queue (keep latest)                   │
+│    → ConfidenceSmoother.add_prediction()         │
+│    → update labels + HUD overlay                 │
+│    → TTS on stable word                          │
+└──────────────────────────────────────────────────┘
+```
+
 ```mermaid
 graph TD
-    A[Camera Feed] --> B[MediaPipe Hand Detection]
-    B --> C[21 3D Landmarks Extraction]
-    C --> D[Landmark Normalization]
-    D --> E[Random Forest Classifier]
-    E --> F[Prediction Smoothing]
-    F --> G[Character Output]
-    G --> H[Sentence Building]
+    A[Webcam] --> B[MediaPipe Tasks API]
+    B --> C[21 3D Landmarks]
+    C --> D[normalize_landmarks]
+    D --> E[ASLNet MLP / Random Forest]
+    E --> F[ConfidenceSmoother]
+    F --> G[Sentence Builder]
+    G --> H[TTS Speaker]
+    E --> I[HUD Overlay]
 ```
 
-### Data Flow:
-1. **Camera Capture**: Real-time video feed from webcam
-2. **Hand Detection**: MediaPipe identifies hand regions and extracts 21 landmarks
-3. **Normalization**: Landmarks are made translation and scale-invariant
-4. **Classification**: Random Forest model predicts ASL letter
-5. **Smoothing**: 5-frame majority voting prevents false positives
-6. **Output**: Stable predictions are added to sentence
+---
 
-## 💻 Installation
+## 🛠 Technologies
 
-### Prerequisites
-- Python 3.11 or higher
-- Webcam/Camera
-- 4GB+ RAM recommended
+| Category | Libraries |
+|---|---|
+| Hand Detection | MediaPipe Tasks API |
+| ML Model | PyTorch (MLP), scikit-learn (Random Forest) |
+| Computer Vision | OpenCV |
+| GUI | Tkinter, ttkthemes, Pillow |
+| TTS | pyttsx3 |
+| Data | NumPy, Pandas |
+| Threading | `threading`, `queue` |
 
-### Step 1: Clone Repository
-```bash
-git clone https://github.com/yourusername/American-sign-language-detection.git
-cd American-sign-language-detection
-```
-
-### Step 2: Install Dependencies
-```bash
-pip install opencv-python mediapipe pandas numpy scikit-learn pillow matplotlib seaborn
-```
-
-### Step 3: Train the Model
-```bash
-# Extract landmarks from training images
-cd utils
-python extract_landmarks.py
-
-# Train the Random Forest classifier  
-cd ../models
-python train_classifier.py
-```
-
-### Step 4: Run the Application
-```bash
-cd ../ui
-python app.py
-```
-
-## 📖 Usage
-
-### Starting the Application
-1. Launch the application: `python ui/app.py`
-2. Click **"▶ Start Camera"** to begin real-time recognition
-3. Show your hand to the camera and make ASL signs
-4. Watch predictions appear in the **RECOGNITION** panel
-5. Stable predictions automatically build your sentence
-
-### Controls
-- **Start/Stop Camera**: Control camera feed
-- **Clear**: Remove all text from sentence
-- **Backspace**: Delete last character
-- **Special Signs**:
-  - Sign 'space' for word separation
-  - Sign 'del' for backspace action
-
-### Tips for Best Results
-- Ensure good lighting conditions
-- Keep hand clearly visible in camera frame
-- Hold each sign steady for ~1 second
-- Wait for 5-second cooldown between letters
-
-## 📺 Demo Video
-
-<!-- Replace with your actual demo video -->
-**[🎬 Watch Full Demo Video](./demo/asl_demo.mp4)**
-
-*The video shows real-time ASL recognition, sentence building, and the intuitive user interface in action.*
+---
 
 ## 📁 Project Structure
 
 ```
-American-sign-language-detection/
-├── checkpoints/              # Trained model files
-│   ├── asl_landmark_model.pkl    # Random Forest model
-│   ├── best_cnn.h5              # Legacy CNN model
-│   └── best_mobilenet.h5        # Legacy MobileNet model
-├── dataset/                  # Training and test data
-│   ├── asl_landmarks.csv         # Processed landmark features
-│   ├── train/                   # Training images by class
-│   └── test/                    # Test images
-├── models/                   # Model training scripts
-│   ├── train_classifier.py      # Random Forest training
-│   ├── cnn_model.py             # Legacy CNN training
-│   └── transfer_mobilenet.py    # Legacy transfer learning
-├── results/                  # Training results and metrics
-│   ├── confusion_matrix_landmark.png
-│   └── confusion_matrix.png
-├── ui/                       # User interface
-│   └── app.py                   # Main application
-├── utils/                    # Utility scripts
-│   ├── extract_landmarks.py     # Landmark extraction
-│   ├── data_prep.py             # Data preprocessing
-│   └── evaluation.py            # Model evaluation
-├── output/                   # Demo outputs
-│   └── Demo.jpg
-└── README.md                 # Project documentation
+SignScribe-ASL-Detector/
+│
+├── core/                          ← Business logic (no UI dependency)
+│   ├── __init__.py
+│   ├── vision.py                  ← HandDetector + normalize_landmarks()
+│   ├── inference.py               ← SignLanguageModel (.pkl and .pth)
+│   ├── smoother.py                ← ConfidenceSmoother
+│   └── tts.py                     ← speak() / shutdown()
+│
+├── ui/
+│   ├── __init__.py
+│   └── app.py                     ← Tkinter GUI + _CameraWorker thread
+│
+├── models/
+│   ├── train_mlp.py               ← Train PyTorch MLP (Phase 4)
+│   └── train_classifier.py        ← Train Random Forest (legacy)
+│
+├── utils/
+│   ├── extract_landmark.py        ← Extract landmarks from image dataset → CSV
+│   ├── data_prep.py               ← Legacy image data generators
+│   └── evaluation.py              ← Model evaluation helpers
+│
+├── dataset/
+│   ├── train/                     ← Training images (one folder per class)
+│   │   ├── A/
+│   │   ├── B/
+│   │   └── ...
+│   └── asl_landmarks.csv          ← Extracted landmark features (generated)
+│
+├── checkpoints/
+│   ├── asl_mlp_model.pth          ← PyTorch MLP checkpoint (generated)
+│   ├── hand_landmarker.task       ← MediaPipe Tasks API asset (auto-downloaded)
+│   └── asl_landmark_model.pkl     ← Random Forest model (legacy)
+│
+├── results/                       ← Confusion matrix plots (generated)
+├── main.py                        ← Legacy CNN/MobileNet entry point
+└── README.md
 ```
+
+### Legacy & Experimental Code
+
+For historical context, the repository includes files from earlier image-classification and GUI approaches. The current working pipeline is landmark-based, making these older files obsolete:
+- `main.py`, `ui/gui.py`, `ui/utils.py` (Old UI)
+- `models/cnn_model.py`, `models/transfer_mobilenet.py`, `models/train_classifier.py` (Old models)
+- `utils/data_prep.py`, `utils/evaluation.py` (Old dataset utils)
+
+---
+
+## 💻 Installation
+
+### Prerequisites
+
+- Python **3.10+**
+- A working **webcam**
+- Windows (pyttsx3 TTS requires `pywin32` on Windows; works on macOS/Linux too)
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Kaivalya078/SignScribe_v2.git
+cd signscribe/SignScribe-ASL-Detector
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+> **Note:** If you have a CUDA GPU, install the CUDA build of PyTorch from [pytorch.org](https://pytorch.org/get-started/locally/) for faster training.
+
+---
+
+## 🏋 Training
+
+Training is a two-step process: **extract landmarks** → **train model**.
+
+### Step 1 — Prepare your dataset
+
+Place your dataset image folders in the `dataset/` directory. The landmark extractor is configured to automatically scan the following default locations:
+
+```text
+dataset/
+  asl_alphabet_train/         ← Primary Kaggle ASL Alphabet dataset
+  kaggle/
+    American/                 ← Additional Kaggle dataset 1
+    Train_Alphabet/           ← Additional Kaggle dataset 2
+```
+
+> **Note:** The script will map common class aliases (e.g., `background` to `nothing`, `delete` to `del`) and intentionally ignore digit folders, as the current model targets only alphabet characters and special actions. See `DATASETS.md` for exact local setup details.
+
+### Step 2 — Extract hand landmarks
+
+Run from the **project root** (`SignScribe-ASL-Detector/`):
+
+```bash
+python utils/extract_landmark.py
+```
+
+This processes every image through MediaPipe, normalizes the 21 hand landmarks (wrist-relative + scale-invariant), and saves them to:
+
+```
+dataset/asl_landmarks.csv
+```
+
+Each row is `label, x0, y0, z0, x1, y1, z1, ..., x20, y20, z20` — 63 features.
+
+**Expected output:**
+```text
+Starting landmark extraction from: dataset/asl_alphabet_train
+Processing class: A
+Processing class: B
+...
+Starting landmark extraction from: dataset/kaggle/American
+...
+Landmark extraction complete. Data saved to dataset/asl_landmarks.csv
+```
+
+### Step 3A — Train the MLP (recommended)
+
+```bash
+python models/train_mlp.py
+```
+
+**With custom options:**
+
+```bash
+python models/train_mlp.py \
+  --csv    dataset/asl_landmarks.csv \
+  --output checkpoints/asl_mlp_model.pth \
+  --epochs 50 \
+  --lr     0.001
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--csv` | `dataset/asl_landmarks.csv` | Input landmark CSV |
+| `--output` | `checkpoints/asl_mlp_model.pth` | Output checkpoint path |
+| `--results` | `results/` | Directory for confusion matrix plot |
+| `--epochs` | `50` | Training epochs |
+| `--batch-size` | `64` | Batch size |
+| `--lr` | `0.001` | Learning rate |
+
+**Expected output:**
+```
+Loaded 87000 samples
+Classes (29): ['A', 'B', ..., 'space']
+Device: cpu
+
+Epoch   1/50  loss=1.2341  val_acc=0.8123  lr=0.001000
+Epoch   5/50  loss=0.4512  val_acc=0.9345  lr=0.001000
+...
+Epoch  50/50  loss=0.0891  val_acc=0.9612  lr=0.000500
+
+Best validation accuracy: 0.9612
+Model saved to checkpoints/asl_mlp_model.pth
+Confusion matrix saved to results/confusion_matrix_mlp.png
+```
+
+### Step 3B — Train the Random Forest (legacy / fallback)
+
+```bash
+python models/train_classifier.py
+```
+
+Saves to `checkpoints/asl_landmark_model.pkl`.
+
+> The app auto-detects which model to load based on file extension. MLP (`.pth`) is the default.
+
+---
+
+## 🚀 Running the App
+
+Always run from the **project root** so that `core/` is importable as a package:
+
+```bash
+cd SignScribe-ASL-Detector
+python -m ui.app
+```
+
+Or equivalently:
+
+```bash
+python -m ui.app
+```
+
+> ⚠️ Do **not** `cd` into `ui/` and run `python app.py` — the package imports will fail.
+
+### What happens on startup
+
+1. `SignLanguageModel` loads the checkpoint from `checkpoints/asl_mlp_model.pth`
+2. The Tkinter window opens
+3. Click **▶ Start Camera** — a background worker thread starts
+4. The worker continuously reads frames, runs MediaPipe + MLP, and pushes results to the UI
+5. The UI polls at 60 Hz and updates labels, overlay, and sentence
+
+### Controls
+
+| Control | Action |
+|---|---|
+| **▶ Start Camera** | Opens webcam, starts worker thread |
+| **⏹ Stop Camera** | Signals worker to stop, joins thread |
+| **Clear** | Empties the sentence |
+| **Backspace** | Deletes the last character |
+
+### Special signs
+
+| Sign | Effect |
+|---|---|
+| `space` | Inserts a space; TTS speaks the last word |
+| `del` | Triggers backspace |
+| `nothing` | Ignored by the smoother |
+
+### Tips for best recognition
+
+- Good, even lighting — avoid harsh shadows on the hand
+- Hold each sign still for ~0.5–1 second
+- Keep the hand within the camera frame, palm facing the camera
+- The confidence bar turns **green** above 85% — aim for that
+
+---
 
 ## 📊 Performance
 
-### Model Comparison
-| Model Type | Accuracy | Speed (FPS) | Model Size | CPU Usage |
-|------------|----------|-------------|------------|-----------|
-| **Random Forest** | **95.2%** | **30+** | **2.1MB** | **Low** |
-| Legacy CNN | 94.8% | 15 | 45MB | High |
-| MobileNetV2 | 93.1% | 20 | 14MB | Medium |
+| Model | Accuracy | Inference | Size |
+|---|---|---|---|
+| **MLP (ASLNet)** | **~96%** | **< 5 ms** | **~200 KB** |
+| Random Forest | ~95% | ~30 ms | ~2 MB |
+| Legacy CNN | ~94% | ~65 ms | 45 MB |
 
-### Recognition Statistics
-- **Training Data**: 15,000+ landmark vectors across 29 classes
-- **Feature Vector Size**: 63 dimensions (21 landmarks × 3 coordinates)
-- **Inference Time**: ~33ms per prediction
-- **Memory Usage**: <100MB during operation
+**Smoother settings (defaults):**
 
-### Confusion Matrix Analysis
-The landmark model shows exceptional performance with minimal confusion between similar signs:
-- **M vs N**: 94.8% vs 92.8% accuracy (expected similarity)
-- **U vs V**: 98.4% vs 99.8% accuracy
-- **Overall**: Near-perfect diagonal in confusion matrix
+| Parameter | Value | Effect |
+|---|---|---|
+| `confidence_threshold` | 0.80 | Minimum probability to count a frame |
+| `stable_frames` | 3 | Consecutive frames required |
+| `cooldown_seconds` | 1.5 | Lockout after each accepted letter |
+| `max_streak_age` | 0.5 s | Debounce — streak must complete quickly |
+
+---
 
 ## 🤝 Contributing
 
-We welcome contributions to improve SignScribe! Here's how you can help:
-
 1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-3. **Commit** your changes: `git commit -m 'Add amazing feature'`
-4. **Push** to the branch: `git push origin feature/amazing-feature`
+2. **Create** a branch: `git checkout -b feature/my-feature`
+3. **Commit**: `git commit -m 'Add my feature'`
+4. **Push**: `git push origin feature/my-feature`
 5. **Open** a Pull Request
 
-### Areas for Contribution:
-- Adding new ASL gestures (words, phrases)
-- UI/UX improvements
-- Performance optimizations  
-- Mobile app development
-- Documentation improvements
+Areas welcome:
+- Extending to ASL words (Bi-LSTM on WLASL)
+- Temperature scaling for better confidence calibration
+- REST API wrapper around `core/inference.py`
+- Mobile/web frontend
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- **MediaPipe Team** for the excellent hand tracking solution
-- **ASL Community** for providing sign language datasets and feedback
-- **scikit-learn** contributors for the robust machine learning library
-- **OpenCV** community for computer vision tools
-
-## 📞 Contact
-
-**Author**: Darshil Doshi
-- GitHub: [@darshild078](https://github.com/darshild078)
-- Email: darshild078@gmail.com
-- LinkedIn: [Darshil Doshi](https://linkedin.com/in/darshild078)
+- Built upon the original [SignScribe-ASL-Detector](https://github.com/darshild078/SignScribe-ASL-Detector.git) repository
+- **MediaPipe** team for the hand landmark solution
+- **PyTorch** and **scikit-learn** communities
+- ASL dataset contributors on Kaggle
 
 ---
 
 <div align="center">
-  <p><strong>⭐ Star this repository if you found it helpful!</strong></p>
+  <p><strong>⭐ Star this repo if it helped you!</strong></p>
   <p>Made with ❤️ for the ASL community</p>
 </div>

@@ -1,0 +1,1 @@
+"""core — SignScribe backend modules."""
